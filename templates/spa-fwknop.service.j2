@@ -1,0 +1,16 @@
+[Unit]
+Description=SPA fwknop daemon in UDP mode
+Requires=spa-gate.service
+After=network.target spa-gate.service
+Wants=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/sbin/fwknopd --foreground --udp-server --config=/etc/fwknop/fwknopd.conf --access-file=/etc/fwknop/access.conf
+Restart=on-failure
+RestartSec=3s
+# Демон запускается root: ему необходимо вызывать nftables helper.
+# Защита от RCE через SPA: ENABLE_CMD_EXEC=N, только фиксированный CMD_CYCLE.
+
+[Install]
+WantedBy=multi-user.target

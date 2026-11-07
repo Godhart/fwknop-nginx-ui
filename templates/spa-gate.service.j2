@@ -1,0 +1,11 @@
+[Unit]
+Description=SPA firewall
+After=local-fs.target nftables.service
+Before=spa-proxy.service spa-fwknop.service
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/spa-gate-apply
+ExecReload=/usr/local/sbin/spa-gate-apply
+[Install]
+WantedBy=multi-user.target

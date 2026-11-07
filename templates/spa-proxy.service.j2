@@ -1,0 +1,17 @@
+[Unit]
+Description=Nginx UI reverse proxy
+Requires=docker.service spa-gate.service
+PartOf=docker.service
+After=docker.service spa-gate.service network-online.target
+Wants=network-online.target
+[Service]
+WorkingDirectory={{ spa_root }}
+ExecStartPre=/usr/local/sbin/spa-gate-apply
+ExecStart=/usr/bin/docker compose up --abort-on-container-exit
+ExecStop=/usr/bin/docker compose down
+Restart=always
+RestartSec=5
+TimeoutStartSec=120
+TimeoutStopSec=60
+[Install]
+WantedBy=multi-user.target

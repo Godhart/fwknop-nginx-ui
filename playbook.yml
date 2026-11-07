@@ -1,0 +1,193 @@
+---
+- name: Dedicated SPA reverse proxy
+  hosts: all
+  become: true
+  pre_tasks:
+    - name: Supported operating system
+      ansible.builtin.assert:
+        that:
+          - ansible_distribution == 'Ubuntu'
+          - ansible_distribution_version in ['24.04', '26.04']
+    - name: Validate settings locally without printing keys
+      ansible.builtin.command:
+        argv: [python3, "{{ playbook_dir }}/scripts/validate.py"]
+        stdin: "{{ {'settings': vars | dict2items | selectattr('key', 'match', '^spa_') | items2dict, 'clients': spa_clients} | to_json }}"
+      delegate_to: localhost
+      become: false
+      changed_when: false
+      no_log: true
+    - name: Detect legacy installation
+      ansible.builtin.stat:
+        path: /etc/systemd/system/spa-nginx-docker.service
+      register: legacy
+    - name: Require clean migration
+      ansible.builtin.assert:
+        that: not legacy.stat.exists
+        fail_msg: 'Legacy deployment detected. Follow docs/MIGRATION.md; no in-place conversion.'
+  tasks:
+    - name: Host dependencies
+      ansible.builtin.apt:
+        name: [fwknop-server, nftables, python3, openssl, ca-certificates]
+        state: present
+        update_cache: true
+    - name: Optional Docker from Ubuntu repositories
+      ansible.builtin.apt:
+        name: [docker.io, docker-compose-v2]
+        state: present
+      when: spa_install_docker
+    - name: Check Docker Compose
+      ansible.builtin.command: docker compose version
+      changed_when: false
+    - name: Start Docker
+      ansible.builtin.systemd_service:
+        name: docker
+        state: started
+        enabled: true
+    - name: Stop packaged fwknop daemon
+      ansible.builtin.systemd_service:
+        name: fwknop-server
+        state: stopped
+        enabled: false
+    - name: Directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: '0755'
+      loop:
+        - /etc/spa-gate
+        - "{{ spa_root }}"
+        - "{{ spa_root }}/nginx"
+        - "{{ spa_root }}/nginx/conf.d"
+        - "{{ spa_root }}/nginx/sites-available"
+        - "{{ spa_root }}/nginx/sites-enabled"
+        - "{{ spa_root }}/nginx/ssl"
+        - "{{ spa_root }}/nginx/modules-enabled"
+        - "{{ spa_root }}/nginx/streams-available"
+        - "{{ spa_root }}/nginx/streams-enabled"
+        - "{{ spa_root }}/logs"
+        - "{{ spa_root }}/www"
+    - name: Private UI data
+      ansible.builtin.file:
+        path: "{{ spa_root }}/nginx-ui"
+        state: directory
+        mode: '0700'
+    - name: Install firewall helpers
+      ansible.builtin.copy:
+        src: "scripts/{{ item }}.py"
+        dest: "/usr/local/sbin/{{ item }}"
+        mode: '0755'
+      loop: [spa-lease-add, spa-gate-apply]
+    - name: Firewall configuration
+      ansible.builtin.template:
+        src: spa-gate.nft.j2
+        dest: /etc/spa-gate/spa-gate.nft
+        mode: '0600'
+      notify: Reload firewall
+    - name: fwknop settings
+      ansible.builtin.template:
+        src: "{{ item }}.j2"
+        dest: "/etc/fwknop/{{ item }}"
+        mode: '0600'
+      loop: [fwknopd.conf, access.conf]
+      no_log: true
+      notify: Restart fwknop
+    - name: Systemd units
+      ansible.builtin.template:
+        src: "{{ item }}.service.j2"
+        dest: "/etc/systemd/system/{{ item }}.service"
+        mode: '0644'
+      loop: [spa-gate, spa-fwknop, spa-proxy]
+      notify: Restart proxy
+    - name: Compose configuration
+      ansible.builtin.template:
+        src: compose.yml.j2
+        dest: "{{ spa_root }}/compose.yml"
+        mode: '0600'
+      notify: Restart proxy
+    - name: Pull selected image (does not start it)
+      ansible.builtin.command: docker compose pull
+      args:
+        chdir: "{{ spa_root }}"
+      register: pull_result
+      changed_when: "'Downloaded newer image' in pull_result.stdout"
+    - name: Obtain packaged mime types without networking or daemon startup
+      ansible.builtin.shell: >-
+        docker run --rm --network none --entrypoint cat
+        {{ spa_nginx_ui_image | quote }} /etc/nginx/mime.types
+        > {{ (spa_root + '/nginx/mime.types') | quote }}
+      args:
+        creates: "{{ spa_root }}/nginx/mime.types"
+    - name: Seed nginx main configuration only once
+      ansible.builtin.template:
+        src: nginx.conf.j2
+        dest: "{{ spa_root }}/nginx/nginx.conf"
+        force: false
+        mode: '0644'
+    - name: Seed gateway and local management listeners only once
+      ansible.builtin.template:
+        src: bootstrap.conf.j2
+        dest: "{{ spa_root }}/nginx/conf.d/nginx-ui.conf"
+        force: false
+        mode: '0644'
+    - name: Bootstrap TLS certificate (replace in UI with trusted certificate)
+      ansible.builtin.command:
+        argv:
+          - openssl
+          - req
+          - -x509
+          - -newkey
+          - rsa:2048
+          - -nodes
+          - -days
+          - '3650'
+          - -subj
+          - /CN=spa-gateway.invalid
+          - -keyout
+          - "{{ spa_root }}/nginx/ssl/stub.key"
+          - -out
+          - "{{ spa_root }}/nginx/ssl/stub.crt"
+        creates: "{{ spa_root }}/nginx/ssl/stub.crt"
+      no_log: true
+    - name: Protect private key
+      ansible.builtin.file:
+        path: "{{ spa_root }}/nginx/ssl/stub.key"
+        mode: '0600'
+    - name: Validate nginx before launch
+      ansible.builtin.command:
+        cmd: docker compose run --rm --no-deps --entrypoint nginx nginx-ui -t
+        chdir: "{{ spa_root }}"
+      changed_when: false
+    - name: Enable firewall before web services
+      ansible.builtin.systemd_service:
+        name: spa-gate
+        state: started
+        enabled: true
+        daemon_reload: true
+    - name: Apply pending changes
+      ansible.builtin.meta: flush_handlers
+    - name: Enable services
+      ansible.builtin.systemd_service:
+        name: "{{ item }}"
+        state: started
+        enabled: true
+      loop: [spa-fwknop, spa-proxy]
+    - name: Wait for local UI
+      ansible.builtin.wait_for:
+        host: 127.0.0.1
+        port: 9000
+        timeout: 120
+  handlers:
+    - name: Reload firewall
+      ansible.builtin.systemd_service:
+        name: spa-gate
+        state: reloaded
+    - name: Restart fwknop
+      ansible.builtin.systemd_service:
+        name: spa-fwknop
+        state: restarted
+        daemon_reload: true
+    - name: Restart proxy
+      ansible.builtin.systemd_service:
+        name: spa-proxy
+        state: restarted
+        daemon_reload: true

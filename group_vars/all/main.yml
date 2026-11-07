@@ -1,0 +1,22 @@
+# Единственный режим v2: nginx + Nginx UI в одном официальном контейнере.
+spa_install_docker: true
+spa_root: /opt/spa-proxy
+# Для production задайте проверенный digest uozi/nginx-ui@sha256:...
+spa_nginx_ui_image: uozi/nginx-ui:latest
+spa_docker_socket: true
+spa_ssh_port: 22
+spa_knock_udp_port: 62201
+spa_lease_seconds: 300
+spa_packet_max_age: 120
+spa_ssh_rescue_cidrs: [] # ОБЯЗАТЕЛЬНО: ваш административный IPv4/32 или IPv6/128
+spa_web_bypass_cidrs: [] # постоянные исключения только для HTTP/HTTPS
+spa_public_extra_tcp_ports: []
+spa_public_extra_udp_ports: []
+spa_protected_tcp_ports: [22]
+spa_protected_udp_ports: []
+spa_stub_mode: page # page | empty | redirect
+spa_redirect_scheme: http
+spa_redirect_port: 80
+spa_http01: true
+# Разные ключи на каждого клиента; все клиенты получают общий профиль портов.
+spa_clients: "{{ vault_spa_clients }}"

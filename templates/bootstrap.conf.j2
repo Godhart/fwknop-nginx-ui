@@ -1,0 +1,64 @@
+# Начальный конфиг. После первого запуска принадлежит администратору в UI.
+map $http_upgrade $connection_upgrade { default upgrade; '' close; }
+map $remote_addr $spa_redirect_host { ~: "[$remote_addr]"; default $remote_addr; }
+server {
+ listen 127.0.0.1:9080;
+ server_name localhost;
+ location / {
+  proxy_pass http://127.0.0.1:9000;
+  proxy_http_version 1.1;
+  proxy_set_header Host $http_host;
+  proxy_set_header Upgrade $http_upgrade;
+  proxy_set_header Connection $connection_upgrade;
+  proxy_set_header X-Real-IP $remote_addr;
+  proxy_set_header X-Forwarded-For $remote_addr;
+  proxy_set_header X-Forwarded-Proto $scheme;
+ }
+}
+server {
+ listen 80 default_server;
+ listen [::]:80 default_server;
+ server_name _;
+ location / { return 444; }
+{% if spa_http01 %}
+ location ^~ /.well-known/acme-challenge/ {
+  proxy_pass http://127.0.0.1:9180;
+  proxy_set_header Host $host;
+ }
+{% endif %}
+}
+server {
+ listen 443 ssl default_server;
+ listen [::]:443 ssl default_server;
+ server_name _;
+ ssl_certificate /etc/nginx/ssl/stub.crt;
+ ssl_certificate_key /etc/nginx/ssl/stub.key;
+ return 444;
+}
+server {
+ listen 8081;
+ listen [::]:8081;
+ listen 8444 ssl;
+ listen [::]:8444 ssl;
+ server_name _;
+ ssl_certificate /etc/nginx/ssl/stub.crt;
+ ssl_certificate_key /etc/nginx/ssl/stub.key;
+ access_log /var/log/nginx/stub-access.log;
+{% if spa_http01 %}
+ location ^~ /.well-known/acme-challenge/ {
+  proxy_pass http://127.0.0.1:9180;
+  proxy_set_header Host $host;
+  proxy_connect_timeout 3s;
+ }
+{% endif %}
+ location / {
+{% if spa_stub_mode == 'redirect' %}
+  return 302 {{ spa_redirect_scheme }}://$spa_redirect_host:{{ spa_redirect_port }}/;
+{% elif spa_stub_mode == 'empty' %}
+  return 444;
+{% else %}
+  default_type text/html;
+  return 200 '<!doctype html><html><meta charset="utf-8"><title>Gateway</title><body>Service unavailable</body></html>';
+{% endif %}
+ }
+}

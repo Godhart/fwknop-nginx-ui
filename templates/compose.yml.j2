@@ -1,0 +1,25 @@
+services:
+  nginx-ui:
+    image: {{ spa_nginx_ui_image | to_json }}
+    container_name: spa-nginx-ui
+    network_mode: host
+    # Запуском после firewall управляет systemd, не Docker restart policy.
+    restart: "no"
+    environment:
+      TZ: UTC
+      NGINX_UI_SERVER_HOST: 127.0.0.1
+      NGINX_UI_SERVER_PORT: "9000"
+      NGINX_UI_CERT_HTTP_CHALLENGE_PORT: "9180"
+    volumes:
+      - {{ spa_root }}/nginx:/etc/nginx
+      - {{ spa_root }}/nginx-ui:/etc/nginx-ui
+      - {{ spa_root }}/logs:/var/log/nginx
+      - {{ spa_root }}/www:/var/www
+{% if spa_docker_socket %}
+      - /var/run/docker.sock:/var/run/docker.sock
+{% endif %}
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

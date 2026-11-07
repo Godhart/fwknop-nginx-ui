@@ -1,0 +1,47 @@
+# Только наша таблица; Docker не публикует порты, используется host network.
+table inet spa_gate {
+ set trusted_v4 { type ipv4_addr; flags timeout; timeout {{ spa_lease_seconds }}s; }
+ chain prerouting {
+  type nat hook prerouting priority -110; policy accept;
+  iifname "lo" return
+  fib daddr type != local return
+  ip saddr @trusted_v4 return
+{% for cidr in spa_web_bypass_cidrs %}
+  {{ 'ip6' if ':' in cidr else 'ip' }} saddr {{ cidr }} return
+{% endfor %}
+  tcp dport 80 redirect to :8081
+  tcp dport 443 redirect to :8444
+ }
+ chain input {
+  type filter hook input priority -10; policy drop;
+  iifname "lo" accept
+  ct state invalid drop
+  # Даже зарегистрированные IP не получают прямой доступ к управлению.
+  tcp dport { 9000, 9080, 9180 } drop
+  tcp dport { 8081, 8444 } ct status dnat accept
+  tcp dport { 8081, 8444 } drop
+  ct state established,related accept
+  meta l4proto { icmp, ipv6-icmp } accept
+  # DHCP responses (для VPS с динамической настройкой сети).
+  udp sport 67 udp dport 68 accept
+  ip6 saddr fe80::/10 udp sport 547 udp dport 546 accept
+  tcp dport { 80, 443 } accept
+  udp dport {{ spa_knock_udp_port }} accept
+{% for cidr in spa_ssh_rescue_cidrs %}
+  {{ 'ip6' if ':' in cidr else 'ip' }} saddr {{ cidr }} tcp dport {{ spa_ssh_port }} accept
+{% endfor %}
+{% for port in spa_public_extra_tcp_ports %}
+  tcp dport {{ port }} accept
+{% endfor %}
+{% for port in spa_public_extra_udp_ports %}
+  udp dport {{ port }} accept
+{% endfor %}
+{% for port in spa_protected_tcp_ports %}
+  ip saddr @trusted_v4 tcp dport {{ port }} accept
+{% endfor %}
+{% for port in spa_protected_udp_ports %}
+  ip saddr @trusted_v4 udp dport {{ port }} accept
+{% endfor %}
+ }
+ chain forward { type filter hook forward priority -10; policy drop; }
+}

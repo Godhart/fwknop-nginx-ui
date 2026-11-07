@@ -1,0 +1,20 @@
+# Managed by Ansible: fwknopd daemon options.
+# UDP server mode дает возможность получать SPA на Ubuntu 24.04/26.04,
+# даже если fwknop-server собран без pcap. На некорректные SPA
+# fwknopd не отвечает; UDP порт выглядит как open|filtered.
+ENABLE_UDP_SERVER             Y;
+UDPSERV_PORT                  {{ spa_knock_udp_port }};
+ENABLE_NFQ_CAPTURE           N;
+ENABLE_TCP_SERVER            N;
+ENABLE_SPA_OVER_HTTP         N;
+ENABLE_X_FORWARDED_FOR       N;
+
+# Для защиты от повторной отправки захваченных SPA пакетов.
+ENABLE_SPA_PACKET_AGING      Y;
+MAX_SPA_PACKET_AGE           {{ spa_packet_max_age }};
+ENABLE_DIGEST_PERSISTENCE    Y;
+
+# Управление реальным доступом выполняется через CMD_CYCLE_OPEN в
+# access.conf и nftables set, а не через EXTERNAL_CMD_*: последний
+# интерфейс в опубликованном исходном шаблоне fwknop не реализован.
+VERBOSE                      0;

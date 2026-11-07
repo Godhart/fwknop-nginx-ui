@@ -1,0 +1,15 @@
+{% for client in spa_clients %}
+# {{ client.name }}
+SOURCE ANY
+OPEN_PORTS tcp/443
+KEY_BASE64 {{ client.key_base64 }}
+HMAC_KEY_BASE64 {{ client.hmac_key_base64 }}
+ENABLE_CMD_EXEC N
+REQUIRE_SOURCE_ADDRESS N
+FW_ACCESS_TIMEOUT {{ spa_lease_seconds }}
+MAX_FW_TIMEOUT {{ spa_lease_seconds }}
+CMD_CYCLE_OPEN /usr/local/sbin/spa-lease-add $PKT_SRC {{ spa_lease_seconds }}
+CMD_CYCLE_CLOSE NONE
+CMD_CYCLE_TIMER {{ spa_lease_seconds }}
+
+{% endfor %}
