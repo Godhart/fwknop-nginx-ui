@@ -149,3 +149,7 @@ System → Self Check → Attempt to fix для WebSocket reverse-proxy fix.
 Сохраните копию конфигурации и проверьте nginx -t, терминал и live tail в UI.
 
 Источник: https://nginxui.com/guide/docker-websocket-fix
+
+## Клиенты для авторизации
+
+- для linux / macos / android: https://github.com/Godhart/fwknop-keepalive
