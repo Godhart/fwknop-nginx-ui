@@ -1,3 +1,9 @@
+# 2.0.1
+
+- Исправлен bootstrap nginx-ui.conf согласно WebSocket self-check Nginx UI.
+- Forwarded proto/host сохраняются только на loopback UI proxy.
+- Добавлена регрессионная проверка; существующие конфиги не перезаписываются.
+
 # 2.0.0
 
 - Новая dedicated reverse proxy архитектура, один Docker Nginx UI.

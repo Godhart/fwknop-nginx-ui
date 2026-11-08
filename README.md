@@ -1,4 +1,4 @@
-# SPA reverse proxy — 2.0.0
+# SPA reverse proxy — 2.0.1
 
 Новая ветка для выделенного шлюза Ubuntu 24.04 / 26.04. fwknop + nftables
 работают на хосте, nginx и Nginx UI — в одном официальном Docker-контейнере.
@@ -135,3 +135,17 @@ python3 -m unittest discover -s tests -v
 [env](https://nginxui.com/guide/env),
 [сертификаты](https://nginxui.com/guide/config-cert),
 [server](https://nginxui.com/guide/config-server).
+
+## Исправление WebSocket в 2.0.1
+
+Начальный nginx-ui.conf содержит maps для X-Forwarded-Proto/Host, требуемые
+проверкой Nginx UI. Они используются только в loopback listener 9080.
+Для обычного HTTP SSH-туннеля без этих заголовков сохраняются $scheme и $http_host.
+Публичные upstream-конфигурации продолжают перезаписывать forwarding headers.
+
+На уже установленном сервере шаблон не перезаписывается. Если Self Check уже
+исправил файл, дополнительных изменений не требуется. Иначе используйте
+System → Self Check → Attempt to fix для WebSocket reverse-proxy fix.
+Сохраните копию конфигурации и проверьте nginx -t, терминал и live tail в UI.
+
+Источник: https://nginxui.com/guide/docker-websocket-fix

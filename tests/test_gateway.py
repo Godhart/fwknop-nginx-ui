@@ -118,6 +118,19 @@ class GatewayTests(unittest.TestCase):
         self.assertEqual(len(seeds), 2)
         self.assertTrue(all(t['force'] is False for t in seeds))
 
+    def test_ui_forwarded_headers_are_local_only(self):
+        conf = self.render('bootstrap.conf')
+        self.assertIn('map $http_x_forwarded_proto $forwarded_proto', conf)
+        self.assertIn('map $http_x_forwarded_host $forwarded_host', conf)
+        self.assertIn("'' $scheme;", conf)
+        self.assertIn("'' $http_host;", conf)
+        ui, public = conf.split('server {\n listen 80 default_server;', 1)
+        self.assertIn('listen 127.0.0.1:9080;', ui)
+        self.assertIn('proxy_set_header X-Forwarded-Proto $forwarded_proto;', ui)
+        self.assertIn('proxy_set_header X-Forwarded-Host $forwarded_host;', ui)
+        self.assertNotIn('$forwarded_proto', public)
+        self.assertNotIn('$forwarded_host', public)
+
     def test_service_firewall_dependency(self):
         conf = self.render('spa-proxy.service')
         self.assertIn('Requires=docker.service spa-gate.service', conf)
